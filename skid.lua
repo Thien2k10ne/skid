@@ -642,12 +642,98 @@ local function GetGodhumanMasteryTarget()
     local step = GetGodhumanNextStep(false)
     return step and step.Mode == "MASTERY" and step.Name or nil
 end
-local BodyClipVelocity = nil
+local AnchorPart = workspace:FindFirstChild("Rip_Indra")
+if not AnchorPart then
+    AnchorPart = Instance.new("Part", workspace)
+    AnchorPart.Size = Vector3.new(1, 1, 1)
+    AnchorPart.Name = "Rip_Indra"
+    AnchorPart.Anchored = true
+    AnchorPart.CanCollide = false
+    AnchorPart.CanTouch = false
+    AnchorPart.Transparency = 1
+end
+getgenv().OnFarm = true
+local PosMon = nil
+local _B = true
+local function BringEnemy()
+    if not _B or not PosMon then return end
+    pcall(function()
+        local enemies = Workspace:FindFirstChild("Enemies")
+        if not enemies then return end
+        for _, enemy in pairs(enemies:GetChildren()) do
+            local hum = enemy:FindFirstChild("Humanoid")
+            local root = enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart")
+            if hum and hum.Health > 0 and root then
+                if (root.Position - PosMon).Magnitude <= 300 then
+                    root.CFrame = CFrame.new(PosMon)
+                    root.CanCollide = true
+                    hum.WalkSpeed = 0
+                    hum.JumpPower = 0
+                    if hum:FindFirstChild("Animator") then
+                        hum.Animator:Destroy()
+                    end
+                    pcall(function()
+                        sethiddenproperty(LocalPlayer, "SimulationRadius", math.huge)
+                    end)
+                end
+            end
+        end
+    end)
+end
+task.spawn(function()
+    repeat task.wait() until LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+    AnchorPart.CFrame = LocalPlayer.Character.PrimaryPart.CFrame
+    while task.wait() do
+        pcall(function()
+            local char = LocalPlayer.Character
+            local root = char and (char.PrimaryPart or char:FindFirstChild("HumanoidRootPart"))
+            if getgenv().OnFarm then
+                if root and AnchorPart and AnchorPart.Parent == workspace then
+                    if (root.Position - AnchorPart.Position).Magnitude <= 200 then
+                        root.CFrame = AnchorPart.CFrame
+                    else
+                        AnchorPart.CFrame = root.CFrame
+                    end
+                end
+                if char then
+                    for _, p in pairs(char:GetChildren()) do
+                        if p:IsA("BasePart") then
+                            p.CanCollide = false
+                        end
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp and not hrp:FindFirstChild("BodyClip") then
+                        local bv = Instance.new("BodyVelocity")
+                        bv.Name = "BodyClip"
+                        bv.Parent = hrp
+                        bv.MaxForce = Vector3.new(100000, 100000, 100000)
+                        bv.Velocity = Vector3.new(0, 0, 0)
+                    end
+                end
+            else
+                if char then
+                    for _, p in pairs(char:GetChildren()) do
+                        if p:IsA("BasePart") then
+                            p.CanCollide = true
+                        end
+                    end
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    if hrp and hrp:FindFirstChild("BodyClip") then
+                        hrp.BodyClip:Destroy()
+                    end
+                end
+            end
+        end)
+    end
+end)
 local function HoldPosition(targetCF)
     local char = LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if hrp then
-        if targetCF then hrp.CFrame = targetCF end
+        if targetCF then
+            hrp.CFrame = targetCF
+            if AnchorPart then AnchorPart.CFrame = targetCF end
+        end
         hrp.AssemblyLinearVelocity = Vector3.zero
         hrp.AssemblyAngularVelocity = Vector3.zero
         local clip = hrp:FindFirstChild("BodyClip")
@@ -661,47 +747,11 @@ local function HoldPosition(targetCF)
     end
 end
 local function EnableNoclip()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hrp and hrp:FindFirstChild("BodyClip") then
-        hrp.BodyClip:Destroy()
-    end
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = false
-        end
-    end
-    if hrp then
-        hrp.AssemblyLinearVelocity = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end
+    getgenv().OnFarm = true
 end
 local function DisableNoclip()
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if hrp and hrp:FindFirstChild("BodyClip") then
-        hrp.BodyClip:Destroy()
-    end
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanCollide = true
-        end
-    end
+    getgenv().OnFarm = false
 end
-RunService.Stepped:Connect(function()
-    if CurrentTween and CurrentTween.PlaybackState == Enum.PlaybackState.Playing then
-        local char = LocalPlayer.Character
-        if char then
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-            end
-        end
-    end
-end)
 local WorldGates = {}
 if Old_World then
     WorldGates = {
@@ -801,24 +851,25 @@ local function ToTarget(targetDestination)
     local char = LocalPlayer.Character
     if not char then return end
     local hum = char:FindFirstChild("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hum or not hrp or hum.Health <= 0 then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root or hum.Health <= 0 then return end
     if hum.Sit then
         hum.Sit = false
         hum.Jump = true
         task.wait(0.1)
         if not hum.SeatPart then
-            hrp.CFrame = hrp.CFrame * CFrame.new(0, 10, 0)
+            root.CFrame = root.CFrame * CFrame.new(0, 10, 0)
         end
         return
     end
-    local destPos = typeof(targetDestination) == "CFrame" and targetDestination.Position or targetDestination
-    local currentPos = hrp.Position
+    local targetCF = typeof(targetDestination) == "CFrame" and targetDestination or CFrame.new(targetDestination)
+    local destPos = targetCF.Position
+    local currentPos = root.Position
     local isSubmergedCrossing = (destPos.Y < -1000 and currentPos.Y > -1000) or (destPos.Y > -1000 and currentPos.Y < -1000)
     if isSubmergedCrossing then
         if destPos.Y < -1000 then
             local subWorkerCFrame = CFrame.new(-16270, 25, 1379)
-            if (hrp.Position - subWorkerCFrame.Position).Magnitude > 50 then
+            if (root.Position - subWorkerCFrame.Position).Magnitude > 50 then
                 ToTarget(subWorkerCFrame)
                 return
             end
@@ -828,13 +879,13 @@ local function ToTarget(targetDestination)
             local timeout = tick() + 8
             while task.wait(0.1) do
                 local c = LocalPlayer.Character
-                local root = c and c:FindFirstChild("HumanoidRootPart")
-                if (root and root.Position.Y < -1000) or tick() >= timeout then break end
+                local r = c and c:FindFirstChild("HumanoidRootPart")
+                if (r and r.Position.Y < -1000) or tick() >= timeout then break end
             end
             return
         else
             local subTeleportCFrame = CFrame.new(11427, -2155, 9730)
-            if (hrp.Position - subTeleportCFrame.Position).Magnitude > 50 then
+            if (root.Position - subTeleportCFrame.Position).Magnitude > 50 then
                 ToTarget(subTeleportCFrame)
                 return
             end
@@ -844,8 +895,8 @@ local function ToTarget(targetDestination)
             local timeout = tick() + 8
             while task.wait(0.1) do
                 local c = LocalPlayer.Character
-                local root = c and c:FindFirstChild("HumanoidRootPart")
-                if (root and root.Position.Y > -1000) or tick() >= timeout then break end
+                local r = c and c:FindFirstChild("HumanoidRootPart")
+                if (r and r.Position.Y > -1000) or tick() >= timeout then break end
             end
             return
         end
@@ -862,21 +913,21 @@ local function ToTarget(targetDestination)
             return
         end
     end
-    EnableNoclip()
-    local targetCF = typeof(targetDestination) == "CFrame" and targetDestination or CFrame.new(destPos)
-    local distance = (targetCF.Position - hrp.Position).Magnitude
-    if distance <= 15 then
+    getgenv().OnFarm = true
+    local dist = (targetCF.Position - root.Position).Magnitude
+    if dist <= 12 then
         if CurrentTween then
             pcall(function() CurrentTween:Cancel() end)
             CurrentTween = nil
         end
         CurrentTweenGoal = targetCF
-        HoldPosition(targetCF)
+        AnchorPart.CFrame = targetCF
+        root.CFrame = targetCF
         return
     end
-    if CurrentTween and CurrentTweenGoal 
-        and CurrentTween.PlaybackState == Enum.PlaybackState.Playing 
-        and (CurrentTweenGoal.Position - targetCF.Position).Magnitude <= 20 then
+    if CurrentTween and CurrentTweenGoal
+        and CurrentTween.PlaybackState == Enum.PlaybackState.Playing
+        and (CurrentTweenGoal.Position - targetCF.Position).Magnitude <= 15 then
         return CurrentTween
     end
     if CurrentTween then
@@ -887,17 +938,18 @@ local function ToTarget(targetDestination)
     local speed = tonumber(getgenv().TweenSpeed) or tonumber(TweenSpeed) or 210
     if speed > 220 then speed = 220 end
     if speed < 50 then speed = 200 end
-    local duration = distance / speed
-    if duration < 0.1 then duration = 0.1 end
-    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
-    CurrentTween = TweenService:Create(hrp, tweenInfo, { CFrame = targetCF })
+    local tweenInfo = TweenInfo.new(dist / speed, Enum.EasingStyle.Linear)
+    CurrentTween = TweenService:Create(AnchorPart, tweenInfo, { CFrame = targetCF })
+    if hum.Sit == true then
+        AnchorPart.CFrame = CFrame.new(AnchorPart.Position.X, targetCF.Y, AnchorPart.Position.Z)
+    end
     CurrentTween.Completed:Connect(function()
         CurrentTween = nil
         CurrentTweenGoal = nil
-        DisableNoclip()
     end)
     CurrentTween:Play()
 end
+local _tp = ToTarget
 local function EquipBestWeapon()
     pcall(function()
         local char = LocalPlayer.Character
@@ -986,17 +1038,6 @@ RunService.Heartbeat:Connect(function()
                 Net["RE/RegisterHit"]:FireServer(hitPart, { { firstEnemy, hitPart } })
             end)
         end
-    end
-end)
-RunService.RenderStepped:Connect(function()
-    local char = LocalPlayer.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not char or not hrp then return end
-    local target = _G.AimedTarget
-    if target and target.Parent and target:FindFirstChild("HumanoidRootPart") and target:FindFirstChild("Humanoid") and target.Humanoid.Health > 0 then
-        local targetRoot = target.HumanoidRootPart
-        local behindPos = (targetRoot.CFrame * CFrame.new(0, 0, 15)).Position
-        hrp.CFrame = CFrame.lookAt(behindPos, targetRoot.Position)
     end
 end)
 local FollowerConnection = nil
@@ -2076,43 +2117,34 @@ task.spawn(function()
                             if targetMob and targetMob:FindFirstChild("HumanoidRootPart") and targetMob:FindFirstChild("Humanoid") and targetMob.Humanoid.Health > 0 then
                                 _G.AimedTarget = targetMob
                                 local mobRoot = targetMob.HumanoidRootPart
-                                local distToMob = (hrp.Position - mobRoot.Position).Magnitude
+                                if not targetMob:GetAttribute("Locked") then
+                                    targetMob:SetAttribute("Locked", mobRoot.CFrame)
+                                end
+                                PosMon = (targetMob:GetAttribute("Locked")).Position
+                                BringEnemy()
+                                local tool = EquipBestWeapon()
+                                local toolTip = tool and tool.ToolTip or ""
+                                local hoverCF = nil
+                                if toolTip == "Blox Fruit" then
+                                    hoverCF = (mobRoot.CFrame * CFrame.new(0, 8, 0)) * CFrame.Angles(0, math.rad(90), 0)
+                                else
+                                    hoverCF = (mobRoot.CFrame * CFrame.new(0, 15, 0)) * CFrame.Angles(0, math.rad(180), 0)
+                                end
+                                ToTarget(hoverCF)
                                 pcall(function()
-                                    mobRoot.CanCollide = false
-                                    mobRoot.Size = Vector3.new(50, 50, 50)
-                                    mobRoot.Transparency = 1
-                                    if targetMob:FindFirstChild("Humanoid") then
-                                        targetMob.Humanoid.WalkSpeed = 0
-                                        targetMob.Humanoid.JumpPower = 0
+                                    local vu = game:GetService("VirtualUser")
+                                    vu:CaptureController()
+                                    vu:Button1Down(Vector2.new(0, 0))
+                                end)
+                                pcall(function()
+                                    if Net and Net:FindFirstChild("RE/RegisterAttack") and Net:FindFirstChild("RE/RegisterHit") then
+                                        Net["RE/RegisterAttack"]:FireServer(0)
+                                        Net["RE/RegisterHit"]:FireServer(mobRoot, { { targetMob, mobRoot } })
                                     end
                                 end)
-                                if distToMob > 35 then
-                                    ToTarget(mobRoot.CFrame * CFrame.new(0, 22, 0))
-                                else
-                                    if CurrentTween then
-                                        pcall(function() CurrentTween:Cancel() end)
-                                        CurrentTween = nil
-                                    end
-                                    local hoverCF = mobRoot.CFrame * CFrame.new(0, 22, 0)
-                                    HoldPosition(hoverCF)
-                                    local tool = EquipBestWeapon()
-                                    if tool then
-                                        pcall(function() tool:Activate() end)
-                                    end
-                                    pcall(function()
-                                        local vu = game:GetService("VirtualUser")
-                                        vu:CaptureController()
-                                        vu:Button1Down(Vector2.new(0, 0))
-                                    end)
-                                    pcall(function()
-                                        if Net and Net:FindFirstChild("RE/RegisterAttack") and Net:FindFirstChild("RE/RegisterHit") then
-                                            Net["RE/RegisterAttack"]:FireServer(0)
-                                            Net["RE/RegisterHit"]:FireServer(mobRoot, { { targetMob, mobRoot } })
-                                        end
-                                    end)
-                                end
                             else
                                 _G.AimedTarget = nil
+                                PosMon = nil
                                 if quest.CMon then
                                     ToTarget(quest.CMon * CFrame.new(0, 25, 0))
                                 end
